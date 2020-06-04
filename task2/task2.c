@@ -120,45 +120,26 @@ void printSectionNames()
     }
 }
 
+//referenced from stack overflow
 void printSymbols()
 {
-    printf("Symbols:\n");
-    printf("\tName\t\t\t\t\tSection\n");
+    printf("Symbols:\n\n");
     Elf32_Shdr *section = (Elf32_Shdr*)(fileInMemory+hdr->e_shoff);
     char *sectionNames = (char *)(fileInMemory + section[hdr->e_shstrndx].sh_offset);
 
     for(int i=0; i<hdr->e_shnum; i++) {
         if((section[i].sh_type==SHT_SYMTAB)|(section[i].sh_type==SHT_DYNSYM)) {
+            printf("*** %s ***\n\n",sectionNames + section[i].sh_name);
             Elf32_Sym *symtab = (Elf32_Sym *)(fileInMemory+section[i].sh_offset);
             int symbolNum = section[i].sh_size/section[i].sh_entsize;
             char *symbolNames = (char *)(fileInMemory + section[section[i].sh_link].sh_offset);
             for (int j=0; j<symbolNum; j++) {
                 char* name = symbolNames + symtab[j].st_name;
-                if(name[0]!='\0') printf("%d)\t%-25s\t\t%s\n", i,name,sectionNames + section[i].sh_name);
+                if(name[0]!='\0') printf("%d)\t%-25s\n", j,name);
             }
+            printf("\n");
         }
     }
-}
-
-void printSymbols2()
-{
-    printf("Symbols:\n");
-    printf("idx\tName\t\t   addr\t\toffset\tsize\ttype\n");
-    Elf32_Shdr *sectionHeaders = (Elf32_Shdr *)(fileInMemory + hdr->e_shoff);
-    Elf32_Shdr *sectionHeaderStringTable = &sectionHeaders[hdr->e_shstrndx];
-    Elf32_Shdr *sections = (Elf32_Shdr *)((char *)fileInMemory + hdr->e_shoff);
-    char *names = fileInMemory + sectionHeaderStringTable->sh_offset;
-    Elf32_Sym* symbolTable = NULL;   
-    int i;
-    for (i = 0; i < hdr->e_shnum; i++)
-        if (sections[i].sh_type == SHT_SYMTAB) {
-            symbolTable = (Elf32_Sym *)((char *)fileInMemory + sections[i].sh_offset);
-            break; 
-        }
-    for(i=0;i<100;i++){
-        Elf32_Sym symbol=symbolTable[i];
-        printf("%s\n",names+symbol.st_name);
-    }   
 }
 
 struct MenuItem
