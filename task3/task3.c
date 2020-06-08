@@ -47,7 +47,7 @@ int getDeciInput(int maxStrLen)
 }
 void flushStdin()
 {
-    char temp;
+    char temp = 'a';
     while ((temp != EOF) & (temp != '\n'))
         temp = fgetc(stdin);
 }
@@ -78,6 +78,10 @@ void examineElfFile()
     if (debugMode)
         printf("(DEBUG: closing file %s returned %d)\n", fileName, closeRes);
     setFileName();
+    FILE *temp = fopen(fileName, "r");
+    fseek(temp, 0, SEEK_END);
+    int fileSize = ftell(temp);
+    fclose(temp);
     currFD = open(fileName, O_RDONLY);
     if (debugMode)
         printf("(DEBUG: opening file %s returned %d)\n", fileName, currFD);
@@ -90,8 +94,8 @@ void examineElfFile()
     }
     if (debugMode)
         printf("(DEBUG: file size = 0x%lX)\n", s.st_size);
-    memcpy(fileInMemory, mmap(NULL, s.st_size, PROT_READ, MAP_PRIVATE, currFD, 0), 10000);
-    hdr = fileInMemory;
+    memcpy(fileInMemory, mmap(NULL, s.st_size, PROT_READ, MAP_PRIVATE, currFD, 0), fileSize);
+    hdr = (Elf32_Ehdr *)fileInMemory;
 
     printf("MAGIC Nunmbers: %02X %02X %02X\n", hdr->e_ident[0], hdr->e_ident[1], hdr->e_ident[2]);
     printf("Entry Point:               0x%08X\t(deci: %d)\n", hdr->e_entry, hdr->e_entry);
@@ -120,7 +124,8 @@ void printSectionNames()
     }
 }
 
-char* getDynSymStrings(){
+char *getDynSymStrings()
+{
     Elf32_Shdr *section = (Elf32_Shdr *)(fileInMemory + hdr->e_shoff);
     char *sectionNames = (char *)(fileInMemory + section[hdr->e_shstrndx].sh_offset);
 
@@ -161,61 +166,41 @@ void printSymbols()
         }
     }
 }
-//almost done...printing section name instead of symbol name??
+
 void printRelocTables()
 {
     printf("Relocation Tables:\n\n");
-    Elf32_Shdr *section = (Elf32_Shdr *)(fileInMemory + hdr->e_shoff);
-    char *sectionNames = (char *)(fileInMemory + section[hdr->e_shstrndx].sh_offset);
-    char* symNames = getDynSymStrings();
-    
+    Elf32_Shdr *sections = (Elf32_Shdr *)(fileInMemory + hdr->e_shoff);
+    Elf32_Shdr *namesSectionTable = sections + hdr->e_shstrndx;
+    char *names = fileInMemory + namesSectionTable->sh_offset;
     for (int i = 0; i < hdr->e_shnum; i++)
     {
-        int type = section[i].sh_type;
-        if (type == SHT_RELA)
+        Elf32_Shdr *sectionHdr = sections + i;
+        if (sectionHdr->sh_type == SHT_REL || sectionHdr->sh_type == SHT_RELA)
         {
-            printf("*** %s ***rela\n\n", sectionNames + section[i].sh_name);
-            printf("\tOffset\tInfo\tAddend\tType\tName\n");
-            Elf32_Rela *relas = (Elf32_Rela *)(fileInMemory + section[i].sh_offset);
-            Elf32_Sym *symtab = (Elf32_Sym *)(fileInMemory + section[i].sh_offset);
-            int numEnts = section[i].sh_size / section[i].sh_entsize;
-            char *symbolNames = (char *)(fileInMemory + section[section[i].sh_link].sh_offset);
+            printf("%s:\n", names + sectionHdr->sh_name);
+            printf("\tName\t\t\tOffset\t\tInfo\t\tType\tValue\n");
+            int numEnts = sectionHdr->sh_size / sectionHdr->sh_entsize;
+            Elf32_Shdr *symbolTable = sections + sectionHdr->sh_link;
+            Elf32_Sym *syms = (Elf32_Sym *)(fileInMemory + symbolTable->sh_offset);
+            Elf32_Shdr *symTabNameSect = sections + symbolTable->sh_link;
+            char *symbolNamesTable = fileInMemory + symTabNameSect->sh_offset;
+            Elf32_Rel *rel = (Elf32_Rel *)(fileInMemory + sectionHdr->sh_offset);
             for (int j = 0; j < numEnts; j++)
             {
-                Elf32_Rela rela = relas[j];
-                int type = ELF32_R_TYPE(rela.r_info);
-                int symOffset = ELF32_R_SYM(rela.r_info);
-                char *name = sectionNames + symOffset;
-                printf("%d)\t%X\t%X\t%X\t%X\t%s\n",
-                       j, rela.r_offset, rela.r_info, rela.r_addend, type, name);
-            }
-            printf("\n");
-        }
-        if (type == SHT_REL)
-        {
-            printf("*** %s ***rel\n\n", sectionNames + section[i].sh_name);
-            printf("\tOffset\tInfo\tType\tName\n");
-            Elf32_Rel *rels = (Elf32_Rel *)(fileInMemory + section[i].sh_offset);
-            Elf32_Sym *symtab = (Elf32_Sym *)(fileInMemory + section[i].sh_offset);
-            int numEnts = section[i].sh_size / section[i].sh_entsize;
-            char *symbolNames = (char *)(fileInMemory + section[section[i].sh_link].sh_offset);
-            for (int j = 0; j < numEnts; j++)
-            {
-                Elf32_Rel rel = rels[j];
-                int type = ELF32_R_TYPE(rel.r_info);
-                int symOffset = ELF32_R_SYM(rel.r_info);
-                //char* name = sectionNames+symOffset;
-                int check = symtab[j].st_name;
-                char *name = symNames + symtab[j].st_name;
-                char buf[1000];//buf[22] has first string
-                memcpy(buf,symNames,1000);
-                printf("%d)\t%X\t%X\t%X\t%s\n",
-                       j, rel.r_offset, rel.r_info, type, name);
+                Elf32_Rel *relEnt = rel + j;
+                int type = ELF32_R_TYPE(relEnt->r_info);
+                int symOffset = ELF32_R_SYM(relEnt->r_info);
+                Elf32_Sym *symbol = syms + symOffset;
+                char *symbolName = symbolNamesTable + symbol->st_name;
+                printf("%d) \t%-20s\t%08X\t%08X\t%d\t%08X\n",
+                    j,symbolName,relEnt->r_offset, relEnt->r_info, type, symbol->st_value);
             }
             printf("\n");
         }
     }
 }
+
 
 struct MenuItem
 {

@@ -82,7 +82,7 @@ void examineElfFile(){
     fileInMemory = mmap(NULL,s.st_size,PROT_READ,MAP_PRIVATE,currFD,0);
     hdr = fileInMemory;
 
-    printf("magic numbers: %02X %02X %02X\n",hdr->e_ident[0],hdr->e_ident[1],hdr->e_ident[2]);
+    printf("MAGIC Nunmbers: %02X %02X %02X\n",hdr->e_ident[0],hdr->e_ident[1],hdr->e_ident[2]);
     printf("Entry Point:   %X\n",hdr->e_entry);
 }
 
